@@ -20,6 +20,7 @@ __C.WORKERS = 6
 __C.SEED = -1
 __C.DEBUG = False
 __C.DEBUG_NUM_DATAPOINTS = 100
+__C.DISTRIBUTED = False
 
 __C.RNN_TYPE = 'LSTM'   # 'GRU'
 

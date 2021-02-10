@@ -20,6 +20,7 @@ from shutil import copyfile
 import pickle
 
 import torch
+import torch.distributed
 import torchvision.transforms as transforms
 
 dir_path = (os.path.abspath(os.path.join(os.path.realpath(__file__), './.')))
@@ -35,6 +36,8 @@ def parse_args():
     parser.add_argument('--data_dir', dest='data_dir', type=str, default='')
     parser.add_argument('--net_g', dest='net_g', type=str, default='')
     parser.add_argument('--max_objects', type=int, default=10)
+    parser.add_argument('--local_rank', dest='local_rank', type=int)
+    parser.add_argument('--distributed', action='store_true')
     args = parser.parse_args()
     return args
 
@@ -66,6 +69,26 @@ if __name__ == "__main__":
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
 
+    cfg.DISTRIBUTED = args.distributed
+    if cfg.DISTRIBUTED:
+        cfg.TRAIN.OPTIMIZE_DATA_LOADING = False
+    if not (torch.cuda.is_available() and cfg.CUDA):
+        cfg.CUDA = False
+        cfg.DEVICE = torch.device('cpu')
+        if cfg.DISTRIBUTED:
+            torch.distributed.init_process_group("gloo", init_method='env://')
+    else:
+        if cfg.DISTRIBUTED:
+            # nccl when GPUs available: https://pytorch.org/docs/stable/distributed.html
+            torch.distributed.init_process_group("nccl", init_method='env://')
+            # make sure this process only runs on this GPU,
+            # see https://pytorch.org/docs/master/distributed.html#distributed-launch
+            # https://pytorch.org/tutorials/intermediate/ddp_tutorial.html
+            cfg.GPU_ID = args.local_rank
+            cfg.DEVICE = torch.device('cuda:{}'.format(cfg.GPU_ID))
+        else:
+            cfg.DEVICE = torch.device('cuda:0')
+
     if cfg.SEED == -1:
         cfg.SEED = random.randint(1, 10000)
     random.seed(cfg.SEED)
@@ -78,6 +101,7 @@ if __name__ == "__main__":
         resume = False
         now = datetime.datetime.now(dateutil.tz.tzlocal())
         timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
+        # todo sync output dir to other processes
         output_dir = os.path.join(cfg.OUTPUT_DIR, '%s_%s_%s_%s'
                                   % (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp, cfg.SEED))
         mkdir_p(output_dir)
@@ -86,16 +110,10 @@ if __name__ == "__main__":
         resume = True
         output_dir = args.resume
     initialize_logging(output_dir, to_file=True)
+
     logger.info("Using output dir: %s" % output_dir)
     logger.info("Using seed {}".format(cfg.SEED))
-
-    if not (torch.cuda.is_available() and cfg.CUDA):
-        cfg.CUDA = False
-        cfg.DEVICE = torch.device('cpu')
-    else:
-        cfg.CUDA = True
-        cfg.DEVICE = torch.device('cuda:0')
-    logger.info('USING DEVICE %s' % cfg.DEVICE)
+    logger.info('Using device %s' % cfg.DEVICE)
 
     if args.data_dir != '':
         cfg.DATA_DIR = args.data_dir
@@ -173,3 +191,5 @@ if __name__ == "__main__":
                                                     "generated bounding boxes at test time."
         use_generated_bboxes = cfg.TRAIN.GENERATED_BBOXES
         algo.sampling(split_dir, num_samples=500)  # generate images
+
+    torch.distributed.destroy_process_group()

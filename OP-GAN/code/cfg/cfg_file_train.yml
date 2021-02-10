@@ -1,7 +1,8 @@
 CONFIG_NAME: 'glu-gan2'
 
 DATASET_NAME: 'coco'
-DATA_DIR: 'data'
+DATA_DIR: '../../SOA-OP-GAN/OP-GAN/data'
+#DATA_DIR: 'data'
 WORKERS: 8
 DEBUG: False
 
@@ -12,7 +13,9 @@ TRAIN:
     FLAG: True
     NET_G: "" #
     B_NET_D: True
-    BATCH_SIZE: [32, 28, 24, 24, 20, 16, 16, 16, 12, 12, 12] # batch sizes for the different batches containing [0, 1, ...] objects per image; [24] if OPTIMIZE_DATA_LOADING is False
+#    BATCH_SIZE: [32, 28, 24, 24, 20, 16, 16, 16, 12, 12, 12] # batch sizes for the different batches containing [0, 1, ...] objects per image; [24] if OPTIMIZE_DATA_LOADING is False
+    BATCH_SIZE: [32, 28, 24, 24, 20, 16, 16, 16, 12, 12, 12]
+#    BATCH_SIZE: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
     MAX_EPOCH: 120
     DISCRIMINATOR_LR: 0.0002
     GENERATOR_LR: 0.0002
@@ -27,11 +30,14 @@ TRAIN:
         LAMBDA: 50.0
 
 GAN:
-    DISC_FEAT_DIM: 96
-    GEN_FEAT_DIM: 48
-    GLOBAL_Z_DIM: 100
-    TEXT_CONDITION_DIM: 100
-    RESIDUAL_NUM: 3
+    DISC_FEAT_DIM: 16
+    GEN_FEAT_DIM: 16
+    GLOBAL_Z_DIM: 16
+    LOCAL_Z_DIM: 16
+    INIT_LABEL_DIM: 16
+    NEXT_LABEL_DIM: 16
+    TEXT_CONDITION_DIM: 16
+    RESIDUAL_NUM: 2
 
 TEXT:
     EMBEDDING_DIM: 256
