@@ -10,7 +10,7 @@ DEBUG: False
 SEED: 42
 
 TREE:
-    BRANCH_NUM: 3
+    BRANCH_NUM: 2
 
 TRAIN:
     FLAG: True
@@ -18,11 +18,11 @@ TRAIN:
     B_NET_D: True
 #    BATCH_SIZE: [32, 28, 24, 24, 20, 16, 16, 16, 12, 12, 12] # batch sizes for the different batches containing [0, 1, ...] objects per image; [24] if OPTIMIZE_DATA_LOADING is False
 #    BATCH_SIZE: [40, 28, 24, 24, 20, 16, 16, 16, 12, 12, 12] # batch sizes for the different batches containing [0, 1, ...] objects per image; [24] if OPTIMIZE_DATA_LOADING is False
-    BATCH_SIZE: [40, 34, 30, 30, 26, 20, 20, 18, 16, 16, 16] # batch sizes for the different batches containing [0, 1, ...] objects per image; [24] if OPTIMIZE_DATA_LOADING is False
+    BATCH_SIZE: [52, 34, 30, 30, 26, 20, 20, 18, 16, 16, 16] # batch sizes for the different batches containing [0, 1, ...] objects per image; [24] if OPTIMIZE_DATA_LOADING is False
 #    BATCH_SIZE: [20, 34, 30, 30, 26, 20, 20, 18, 16, 16, 16] # batch sizes for the different batches containing [0, 1, ...] objects per image; [24] if OPTIMIZE_DATA_LOADING is False
     MAX_EPOCH: 120
-    DISCRIMINATOR_LR: 0.0002
-    GENERATOR_LR: 0.0002
+    DISCRIMINATOR_LR: 0.0004
+    GENERATOR_LR: 0.0004
     NET_E: 'models/coco/text_encoder100.pth'
     BBOX_LOSS: False
     OPTIMIZE_DATA_LOADING: False

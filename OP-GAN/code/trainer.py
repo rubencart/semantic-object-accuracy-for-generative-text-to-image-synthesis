@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import json
 import logging
 
 from six.moves import range
@@ -11,6 +12,7 @@ from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
 
 from PIL import Image
+from torch.nn import DataParallel
 from tqdm import tqdm
 import os
 import numpy as np
@@ -38,6 +40,7 @@ class condGANTrainer(object):
             self.image_dir = os.path.join(output_dir, 'Image')
             mkdir_p(self.model_dir)
             mkdir_p(self.image_dir)
+        self.output_dir = output_dir
 
         self.batch_size = cfg.TRAIN.BATCH_SIZE
         self.max_epoch = cfg.TRAIN.MAX_EPOCH
@@ -104,6 +107,17 @@ class condGANTrainer(object):
         logger.info('# of params in netsD: %s' % [count_learnable_params(netD) for netD in netsD])
         epoch = 0
 
+        # if cfg.CUDA:
+        #     text_encoder.to(cfg.DEVICE)
+        #     image_encoder.to(cfg.DEVICE)
+        #     netG.to(cfg.DEVICE)
+        #     if self.n_gpu > 1:
+        #         netG = DataParallelPassThrough(netG, )
+        #     for i in range(len(netsD)):
+        #         netsD[i].to(cfg.DEVICE)
+        #         if self.n_gpu > 1:
+        #             netsD[i] = DataParallelPassThrough(netsD[i], )
+
         if self.resume:
             checkpoint_list = sorted([ckpt for ckpt in glob.glob(self.model_dir + "/" + '*.pth')])
             latest_checkpoint = checkpoint_list[-1]
@@ -133,6 +147,7 @@ class condGANTrainer(object):
                     state_dict = torch.load(Dname, map_location=lambda storage, loc: storage)
                     netsD[i].load_state_dict(state_dict)
         # ########################################################### #
+
         if cfg.CUDA:
             text_encoder.to(cfg.DEVICE)
             image_encoder.to(cfg.DEVICE)
@@ -143,6 +158,7 @@ class condGANTrainer(object):
                 netsD[i].to(cfg.DEVICE)
                 if self.n_gpu > 1:
                     netsD[i] = DataParallelPassThrough(netsD[i], )
+
         return [text_encoder, image_encoder, netG, netsD, epoch]
 
     def define_optimizers(self, netG, netsD):
@@ -191,14 +207,15 @@ class condGANTrainer(object):
         for i in range(len(netsD)):
             netD = netsD[i]
             optimD = optimsD[i]
-            netDs_state_dicts.append(netD.state_dict())
+            netDs_state_dicts.append(netD.state_dict() if not isinstance(netD, DataParallel)
+                                     else netD.module.state_dict())
             optimDs_state_dicts.append(optimD.state_dict())
 
         backup_para = copy_G_params(netG)
         load_params(netG, avg_param_G)
         checkpoint = {
             'epoch': epoch,
-            'netG': netG.state_dict(),
+            'netG': netG.state_dict() if not isinstance(netG, DataParallel) else netG.module.state_dict(),
             'optimG': optimG.state_dict(),
             'netD': netDs_state_dicts,
             'optimD': optimDs_state_dicts}
@@ -294,8 +311,23 @@ class condGANTrainer(object):
             local_noise = Variable(torch.FloatTensor(batch_size, cfg.GAN.LOCAL_Z_DIM)).to(cfg.DEVICE)
             fixed_noise = Variable(torch.FloatTensor(batch_size, cfg.GAN.GLOBAL_Z_DIM).normal_(0, 1)).to(cfg.DEVICE)
 
+        stats = {
+            'disc_losses': [[] for _ in netsD],
+            'gen_losses': {
+                'kl_loss': [],
+                'gen_loss': [],
+            }
+        }
         for epoch in range(start_epoch, self.max_epoch):
             logger.info("Epoch nb: %s" % epoch)
+            epoch_stats = {
+                'disc_losses': [0 for _ in netsD],
+                'gen_losses': {
+                    'kl_loss': 0,
+                    'gen_loss': 0,
+                },
+                # 'steps': 0,
+            }
             gen_iterations = 0
             if cfg.TRAIN.OPTIMIZE_DATA_LOADING:
                 data_iter = []
@@ -327,7 +359,7 @@ class condGANTrainer(object):
                 else:
                     data = data_iter.next()
                     max_objects = 3
-                _dataset.set_description('Obj-{}'.format(max_objects))
+                # _dataset.set_description('Obj-{}'.format(max_objects))
 
                 imgs, captions, cap_lens, class_ids, keys, transformation_matrices, label_one_hot = prepare_data(data)
                 transf_matrices = transformation_matrices[0]
@@ -388,6 +420,7 @@ class condGANTrainer(object):
                     errD.backward()
                     optimizersD[i].step()
                     D_logs += 'errD%d: %.2f ' % (i, errD.item())
+                    epoch_stats['disc_losses'][i] += errD.item()
 
                 #######################################################
                 # (4) Update G network: maximize log(D(G(z)))
@@ -399,22 +432,25 @@ class condGANTrainer(object):
                 # do not need to compute gradient for Ds
                 netG.zero_grad()
                 if cfg.TRAIN.OPTIMIZE_DATA_LOADING:
-                    errG_total = \
+                    errG = \
                         generator_loss(netsD, image_encoder, fake_imgs, real_labels[subset_idx],
                                        words_embs, sent_emb, match_labels[subset_idx], cap_lens, class_ids,
                                        local_labels=label_one_hot, transf_matrices=transf_matrices,
                                        transf_matrices_inv=transf_matrices_inv, max_objects=max_objects)
                 else:
-                    errG_total = \
+                    errG = \
                         generator_loss(netsD, image_encoder, fake_imgs, real_labels,
                                        words_embs, sent_emb, match_labels, cap_lens, class_ids,
                                        local_labels=label_one_hot, transf_matrices=transf_matrices,
                                        transf_matrices_inv=transf_matrices_inv, max_objects=max_objects)
                 kl_loss = KL_loss(mu, logvar)
-                errG_total += kl_loss
+                errG_total = errG + kl_loss
                 # backward and update parameters
                 errG_total.backward()
                 optimizerG.step()
+                epoch_stats['gen_losses']['kl_loss'] += kl_loss.item()
+                epoch_stats['gen_losses']['gen_loss'] += errG.item()
+
                 for p, avg_p in zip(netG.parameters(), avg_param_G):
                     avg_p.mul_(0.999).add_(p.data, alpha=0.001)
 
@@ -423,9 +459,10 @@ class condGANTrainer(object):
 
                 # save images
                 if (
-                        2 * gen_iterations == self.num_batches
-                        or 2 * gen_iterations + 1 == self.num_batches
-                        or gen_iterations + 1 == self.num_batches
+                        # 2 * gen_iterations == self.num_batches
+                        # or 2 * gen_iterations + 1 == self.num_batches
+                        # or
+                        gen_iterations == self.num_batches
                 ):
                     logger.info('Saving images...')
                     backup_para = copy_G_params(netG)
@@ -444,8 +481,17 @@ class condGANTrainer(object):
                                           max_objects, None, name='average')
                     load_params(netG, backup_para)
 
+            stats['gen_losses']['gen_loss'].append(epoch_stats['gen_losses']['gen_loss'] / gen_iterations)
+            stats['gen_losses']['kl_loss'].append(epoch_stats['gen_losses']['kl_loss'] / gen_iterations)
+            for i in range(len(netsD)):
+                stats['disc_losses'][i].append(epoch_stats['disc_losses'][i] / gen_iterations)
+
+            with open(os.path.join(self.output_dir, 'stats.json'), 'w') as f:
+                json.dump(stats, f)
+
             self.save_model(netG, avg_param_G, netsD, optimizerG, optimizersD, epoch)
-        self.save_model(netG, avg_param_G, netsD, optimizerG, optimizersD, epoch)
+
+        self.save_model(netG, avg_param_G, netsD, optimizerG, optimizersD, 1000)
 
     def sampling(self, split_dir, num_samples=30000):
         if cfg.TRAIN.NET_G == '':

@@ -128,7 +128,8 @@ class TextDataset(data.Dataset):
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.target_transform = target_transform
         self.embeddings_num = cfg.TEXT.CAPTIONS_PER_IMAGE
-        self.img_dir = os.path.join(data_dir, img_dir)
+        # self.img_dir = os.path.join(data_dir, img_dir)
+        self.img_dir = img_dir
         self.split_dir = os.path.join(data_dir, split)
         self.eval = eval
         self.use_generated_bboxes = use_generated_bboxes

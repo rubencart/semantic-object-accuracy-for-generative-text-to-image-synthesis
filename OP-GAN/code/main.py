@@ -106,11 +106,14 @@ if __name__ == "__main__":
 
     split_dir, bshuffle = 'train', True
     eval = False
-    img_dir = "train/train2014"
+    # img_dir = "train/train2014"
+    img_dir = cfg.TRAIN_IMAGE_DIR
     if not cfg.TRAIN.FLAG:
         split_dir = 'test'
-        img_dir = "test/val2014"
+        # img_dir = "test/val2014"
+        img_dir = cfg.VAL_IMAGE_DIR
         eval = True
+        bshuffle = False
 
     # Get data loader
     imsize = cfg.TREE.BASE_SIZE * (2 ** (cfg.TREE.BRANCH_NUM - 1))
@@ -135,7 +138,8 @@ if __name__ == "__main__":
             )
             dataset_subsets.append(subset)
             dataloader = torch.utils.data.DataLoader(subset_to_load, batch_size=cfg.TRAIN.BATCH_SIZE[max_objects],
-                                                     drop_last=True, shuffle=bshuffle, num_workers=int(cfg.WORKERS))
+                                                     pin_memory=True,
+                                                     drop_last=not eval, shuffle=bshuffle, num_workers=int(cfg.WORKERS))
             dataloaders.append(dataloader)
 
         algo = trainer(output_dir, dataloaders, dataset.n_words, dataset.ixtoword, resume)
@@ -148,7 +152,8 @@ if __name__ == "__main__":
             torch.utils.data.Subset(dataset, list(range(cfg.DEBUG_NUM_DATAPOINTS))) if cfg.DEBUG else dataset
         )
         dataloader = torch.utils.data.DataLoader(dataset_to_load, batch_size=cfg.TRAIN.BATCH_SIZE[0],
-                                                 drop_last=True, shuffle=bshuffle, num_workers=int(cfg.WORKERS))
+                                                 pin_memory=True,
+                                                 drop_last=not eval, shuffle=bshuffle, num_workers=int(cfg.WORKERS))
 
         algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, resume)
 

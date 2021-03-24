@@ -362,7 +362,7 @@ class DataParallelPassThrough(nn.parallel.DataParallel):
     Use this so the following still works.
     >>> net = SomeModule(10, 20)
     >>> print(net.some_sub_module)
-    >>> net = DistributedDataParallelPassthrough(net)
+    >>> net = DataParallelPassthrough(net)
     >>> print(net.some_sub_module)
     While otherwise, with `nn.parallel.DataParallel`, this would give a ModuleAttributeError.
     https://github.com/pytorch/pytorch/issues/16885
