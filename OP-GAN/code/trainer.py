@@ -75,7 +75,7 @@ class condGANTrainer(object):
         print('Load image encoder from:', img_encoder_path)
         image_encoder.eval()
 
-        text_encoder = RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
+        text_encoder = RNN_ENCODER(self.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM, drop_prob=0.0)
         state_dict = torch.load(cfg.TRAIN.NET_E, map_location=lambda storage, loc: storage)
         text_encoder.load_state_dict(state_dict)
         for p in text_encoder.parameters():
@@ -114,20 +114,28 @@ class condGANTrainer(object):
         #
         if cfg.TRAIN.NET_G != '':
             state_dict = torch.load(cfg.TRAIN.NET_G, map_location=lambda storage, loc: storage)
-            netG.load_state_dict(state_dict)
+            netG.load_state_dict(state_dict['netG'] if 'netG' in state_dict else state_dict)
             print('Load G from: ', cfg.TRAIN.NET_G)
             istart = cfg.TRAIN.NET_G.rfind('_') + 1
             iend = cfg.TRAIN.NET_G.rfind('.')
             epoch = cfg.TRAIN.NET_G[istart:iend]
-            epoch = int(epoch) + 1
-            if cfg.TRAIN.B_NET_D:
-                Gname = cfg.TRAIN.NET_G
-                for i in range(len(netsD)):
-                    s_tmp = Gname[:Gname.rfind('/')]
-                    Dname = '%s/netD%d.pth' % (s_tmp, i)
-                    print('Load D from: ', Dname)
-                    state_dict = torch.load(Dname, map_location=lambda storage, loc: storage)
-                    netsD[i].load_state_dict(state_dict)
+            try:
+                epoch = int(epoch) + 1
+            except ValueError:
+                epoch = 0
+        if cfg.TRAIN.NETS_D != '':
+            state_dict = torch.load(cfg.TRAIN.NETS_D) # , map_location=lambda storage, loc: storage)
+            for i in range(len(netsD)):
+                netsD[i].load_state_dict(state_dict['netD'][i])
+            print('Loaded D from: %s' % cfg.TRAIN.NETS_D)
+            # if cfg.TRAIN.B_NET_D:
+            #     Gname = cfg.TRAIN.NET_G
+            #     for i in range(len(netsD)):
+            #         s_tmp = Gname[:Gname.rfind('/')]
+            #         Dname = '%s/netD%d.pth' % (s_tmp, i)
+            #         print('Load D from: ', Dname)
+            #         state_dict = torch.load(Dname, map_location=lambda storage, loc: storage)
+            #         netsD[i].load_state_dict(state_dict)
         # ########################################################### #
         if cfg.CUDA:
             text_encoder = text_encoder.cuda()
@@ -297,9 +305,12 @@ class condGANTrainer(object):
         else:
             batch_size = self.batch_size[0]
             nz = cfg.GAN.Z_DIM
-            noise = Variable(torch.FloatTensor(batch_size, nz))
-            local_noise = Variable(torch.FloatTensor(batch_size, 32))
-            fixed_noise = Variable(torch.FloatTensor(batch_size, nz).normal_(0, 1))
+            noise = Variable(torch.zeros(batch_size, nz))
+            local_noise = Variable(torch.zeros(batch_size, 32))
+            fixed_noise = Variable(torch.zeros(batch_size, nz))  # .normal_(0, 1))
+            # noise = Variable(torch.FloatTensor(batch_size, nz))
+            # local_noise = Variable(torch.FloatTensor(batch_size, 32))
+            # fixed_noise = Variable(torch.FloatTensor(batch_size, nz).normal_(0, 1))
             if cfg.CUDA:
                 noise, local_noise, fixed_noise = noise.cuda(), local_noise.cuda(), fixed_noise.cuda()
 
@@ -364,8 +375,8 @@ class condGANTrainer(object):
                     inputs = (noise[subset_idx], local_noise[subset_idx], sent_emb, words_embs, mask, transf_matrices,
                               transf_matrices_inv, label_one_hot, max_objects)
                 else:
-                    noise.data.normal_(0, 1)
-                    local_noise.data.normal_(0, 1)
+                    # noise.data.normal_(0, 1)
+                    # local_noise.data.normal_(0, 1)
                     inputs = (noise, local_noise, sent_emb, words_embs, mask, transf_matrices, transf_matrices_inv,
                               label_one_hot, max_objects)
                 fake_imgs, _, mu, logvar = nn.parallel.data_parallel(netG, inputs, self.gpus)
@@ -385,10 +396,10 @@ class condGANTrainer(object):
                                                   max_objects=max_objects)
                     else:
                         errD = discriminator_loss(netsD[i], imgs[i], fake_imgs[i],
-                                                      sent_emb, real_labels, fake_labels, self.gpus,
-                                                      local_labels=label_one_hot, transf_matrices=transf_matrices,
-                                                      transf_matrices_inv=transf_matrices_inv, cfg=cfg,
-                                                      max_objects=max_objects)
+                                                  sent_emb, real_labels, fake_labels, self.gpus,
+                                                  local_labels=label_one_hot, transf_matrices=transf_matrices,
+                                                  transf_matrices_inv=transf_matrices_inv, cfg=cfg,
+                                                  max_objects=max_objects)
 
                     # backward and update parameters
                     errD.backward()
@@ -530,7 +541,7 @@ class condGANTrainer(object):
                     if not os.path.isdir(folder):
                         print('Make a new folder: ', folder)
                         mkdir_p(folder)
-                    k = -1
+                    k = - 1
                     # for k in range(len(fake_imgs)):
                     im = fake_imgs[k][j].data.cpu().numpy()
                     # [-1, 1] --> [0, 255]

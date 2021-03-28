@@ -88,10 +88,13 @@ def crop_imgs(image, bbox, max_objects):
     ori_size = 268
     imsize = 256
 
-    flip_img = random.random() < 0.5
+    # flip_img = random.random() < 0.5
+    flip_img = random.random() < 0.0
     img_crop = ori_size - imsize
-    h1 = int(np.floor((img_crop) * np.random.random()))
-    w1 = int(np.floor((img_crop) * np.random.random()))
+    h1 = 0
+    w1 = 0
+    # h1 = int(np.floor((img_crop) * np.random.random()))
+    # w1 = int(np.floor((img_crop) * np.random.random()))
 
     bbox_scaled = np.zeros_like(bbox)
     bbox_scaled[...] = -1.0
@@ -325,7 +328,7 @@ class TextDataset(data.Dataset):
             x[:num_words, 0] = sent_caption
         else:
             ix = list(np.arange(num_words))  # 1, 2, 3,..., maxNum
-            np.random.shuffle(ix)
+            # np.random.shuffle(ix)
             ix = ix[:cfg.TEXT.WORDS_NUM]
             ix = np.sort(ix)
             x[:, 0] = sent_caption[ix]
@@ -359,14 +362,15 @@ class TextDataset(data.Dataset):
         #
         if self.bbox is not None:
             if self.use_generated_bboxes:
-                rand_num = np.random.randint(0, 5, 1)
+                # rand_num = np.random.randint(0, 5, 1)
+                rand_num = np.random.randint(0, 0, 1)
                 bbox = self.bbox[index, rand_num].squeeze()
             else:
                 bbox = self.bbox[index]
 
         img_name = '%s/%s.jpg' % (self.img_dir, key)
         imgs, bbox_scaled = get_imgs(img_name, self.imsize, self.max_objects,
-                            bbox, self.transform, normalize=self.norm)
+                                     bbox, self.transform, normalize=self.norm)
 
         transformation_matrices = self.get_transformation_matrices(bbox_scaled)
 
@@ -380,7 +384,8 @@ class TextDataset(data.Dataset):
 
         # random select a sentence
         sent_ix = random.randint(0, self.embeddings_num)
-        new_sent_ix = index * self.embeddings_num + sent_ix
+        new_sent_ix = index * self.embeddings_num   # + sent_ix
+        print(new_sent_ix)
         caps, cap_len = self.get_caption(new_sent_ix)
 
         if self.eval:

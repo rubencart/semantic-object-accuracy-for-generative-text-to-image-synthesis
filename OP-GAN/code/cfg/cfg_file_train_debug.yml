@@ -1,0 +1,40 @@
+CONFIG_NAME: 'glu-gan2'
+
+DATASET_NAME: 'coco'
+DATA_DIR: 'data'
+GPU_ID: '0'
+WORKERS: 0
+
+TREE:
+    BRANCH_NUM: 3
+
+TRAIN:
+    FLAG: True
+    NET_G: 'models/op-gan.pth'
+    NETS_D: '/cw/liir/NoCsBack/testliir/rubenc/SOA-OP-GAN-fork/OP-GAN/output/coco_glu-gan2_2021_03_01_17_19_06_42/Model/checkpoint_0119.pth'
+    B_NET_D: False
+    BATCH_SIZE: [10, 28, 24, 24, 20, 16, 16, 16, 12, 12, 12] # batch sizes for the different batches containing [0, 1, ...] objects per image; [24] if OPTIMIZE_DATA_LOADING is False
+    MAX_EPOCH: 120
+    DISCRIMINATOR_LR: 0.0002
+    GENERATOR_LR: 0.0002
+    NET_E: 'models/coco/text_encoder100.pth'
+    BBOX_LOSS: False
+    OPTIMIZE_DATA_LOADING: False
+    GENERATED_BBOXES: False
+    EMPTY_CACHE: True
+    SMOOTH:
+        GAMMA1: 4.0  # 1,2,5 good 4 best  10&100bad
+        GAMMA2: 5.0
+        GAMMA3: 10.0  # 10good 1&100bad
+        LAMBDA: 50.0
+
+GAN:
+    DF_DIM: 96
+    GF_DIM: 48
+    Z_DIM: 100
+    R_NUM: 3
+
+TEXT:
+    EMBEDDING_DIM: 256
+    CAPTIONS_PER_IMAGE: 5
+    WORDS_NUM: 12

@@ -74,7 +74,8 @@ if __name__ == "__main__":
     print('Using config:')
     pprint.pprint(cfg)
 
-    args.manualSeed = random.randint(1, 10000)
+    # args.manualSeed = random.randint(1, 10000)
+    args.manualSeed = 42
     random.seed(args.manualSeed)
     np.random.seed(args.manualSeed)
     torch.manual_seed(args.manualSeed)
@@ -92,7 +93,8 @@ if __name__ == "__main__":
         resume = True
         output_dir = args.resume
 
-    split_dir, bshuffle = 'train', True
+    # split_dir, bshuffle = 'train', True
+    split_dir, bshuffle = 'train', False
     eval = False
     img_dir = "train/train2014"
     if not cfg.TRAIN.FLAG:
@@ -153,4 +155,4 @@ if __name__ == "__main__":
                                                     "not valid for sampling since we use" \
                                                     "generated bounding boxes at test time."
         use_generated_bboxes = cfg.TRAIN.GENERATED_BBOXES
-        algo.sampling(split_dir, num_samples=500)  # generate images
+        algo.sampling(split_dir, num_samples=30000)  # generate images

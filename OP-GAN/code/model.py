@@ -18,6 +18,12 @@ def stn(image, transformation_matrix, size):
 
     return out_image
 
+# def stn(image, transformation_matrix, size):
+#     grid = torch.nn.functional.affine_grid(transformation_matrix, torch.Size(size), align_corners=False)
+#     out_image = torch.nn.functional.grid_sample(image.float(), grid.float(), align_corners=False)
+#
+#     return out_image
+
 
 class GLU(nn.Module):
     def __init__(self):
@@ -354,9 +360,11 @@ class CA_NET(nn.Module):
     def reparametrize(self, mu, logvar):
         std = logvar.mul(0.5).exp_()
         if cfg.CUDA:
-            eps = torch.cuda.FloatTensor(std.size()).normal_()
+            # eps = torch.cuda.FloatTensor(std.size())  # .normal_()
+            eps = torch.zeros(std.size()).cuda()  # .normal_()
         else:
-            eps = torch.FloatTensor(std.size()).normal_()
+            # eps = torch.FloatTensor(std.size())  # .normal_()
+            eps = torch.zeros(std.size())  # .normal_()
         eps = Variable(eps)
         return eps.mul(std).add_(mu)
 
