@@ -312,19 +312,55 @@ class condGANTrainer(object):
             fixed_noise = Variable(torch.FloatTensor(batch_size, cfg.GAN.GLOBAL_Z_DIM).normal_(0, 1)).to(cfg.DEVICE)
 
         stats = {
-            'disc_losses': [[] for _ in netsD],
+            # 'disc_losses': [[] for _ in netsD],
+            'disc_losses': {
+                'disc_loss': [[] for _ in netsD],
+                'cond_real_errD': [[] for _ in netsD],
+                'cond_fake_errD': [[] for _ in netsD],
+                'cond_wrong_errD': [[] for _ in netsD],
+                'cond_wrong_bbox_errD': [[] for _ in netsD],
+                'real_errD': [[] for _ in netsD],
+                'fake_errD': [[] for _ in netsD],
+                'wrong_bbox_errD': [[] for _ in netsD],
+            },
             'gen_losses': {
                 'kl_loss': [],
                 'gen_loss': [],
+                'cond_errG': [[] for _ in netsD],
+                'errG': [[] for _ in netsD],
+                'w_loss0': [],
+                'w_loss1': [],
+                'w_loss': [],
+                's_loss0': [],
+                's_loss1': [],
+                's_loss': [],
             }
         }
         for epoch in range(start_epoch, self.max_epoch):
             logger.info("Epoch nb: %s" % epoch)
             epoch_stats = {
-                'disc_losses': [0 for _ in netsD],
+                # 'disc_losses': [0 for _ in netsD],
+                'disc_losses': {
+                    'disc_loss': [0 for _ in netsD],
+                    'cond_real_errD': [0 for _ in netsD],
+                    'cond_fake_errD': [0 for _ in netsD],
+                    'cond_wrong_errD': [0 for _ in netsD],
+                    'cond_wrong_bbox_errD': [0 for _ in netsD],
+                    'real_errD': [0 for _ in netsD],
+                    'fake_errD': [0 for _ in netsD],
+                    'wrong_bbox_errD': [0 for _ in netsD],
+                },
                 'gen_losses': {
+                    'cond_errG': [0 for _ in netsD],
+                    'errG': [0 for _ in netsD],
                     'kl_loss': 0,
                     'gen_loss': 0,
+                    'w_loss0': 0,
+                    'w_loss1': 0,
+                    'w_loss': 0,
+                    's_loss0': 0,
+                    's_loss1': 0,
+                    's_loss': 0,
                 },
                 # 'steps': 0,
             }
@@ -404,23 +440,30 @@ class condGANTrainer(object):
                 for i in range(len(netsD)):
                     netsD[i].zero_grad()
                     if cfg.TRAIN.OPTIMIZE_DATA_LOADING:
-                        errD = discriminator_loss(netsD[i], imgs[i], fake_imgs[i],
-                                                  sent_emb, real_labels[subset_idx], fake_labels[subset_idx],
-                                                  local_labels=label_one_hot, transf_matrices=transf_matrices,
-                                                  transf_matrices_inv=transf_matrices_inv, cfg=cfg,
-                                                  max_objects=max_objects)
+                        errD, disc_losses = discriminator_loss(
+                            netsD[i], imgs[i], fake_imgs[i], i,
+                            sent_emb, real_labels[subset_idx], fake_labels[subset_idx],
+                            local_labels=label_one_hot, transf_matrices=transf_matrices,
+                            transf_matrices_inv=transf_matrices_inv, cfg=cfg,
+                            max_objects=max_objects
+                        )
                     else:
-                        errD = discriminator_loss(netsD[i], imgs[i], fake_imgs[i],
-                                                  sent_emb, real_labels, fake_labels,
-                                                  local_labels=label_one_hot, transf_matrices=transf_matrices,
-                                                  transf_matrices_inv=transf_matrices_inv, cfg=cfg,
-                                                  max_objects=max_objects)
+                        errD, disc_losses = discriminator_loss(
+                            netsD[i], imgs[i], fake_imgs[i], i,
+                            sent_emb, real_labels, fake_labels,
+                            local_labels=label_one_hot, transf_matrices=transf_matrices,
+                            transf_matrices_inv=transf_matrices_inv, cfg=cfg,
+                            max_objects=max_objects
+                        )
 
                     # backward and update parameters
                     errD.backward()
                     optimizersD[i].step()
                     D_logs += 'errD%d: %.2f ' % (i, errD.item())
-                    epoch_stats['disc_losses'][i] += errD.item()
+                    epoch_stats['disc_losses']['disc_loss'][i] += errD.detach().item()
+                    for key in disc_losses.keys():
+                        epoch_stats['disc_losses'][key][i] += disc_losses[key]
+
 
                 #######################################################
                 # (4) Update G network: maximize log(D(G(z)))
@@ -432,13 +475,13 @@ class condGANTrainer(object):
                 # do not need to compute gradient for Ds
                 netG.zero_grad()
                 if cfg.TRAIN.OPTIMIZE_DATA_LOADING:
-                    errG = \
+                    errG, gen_losses = \
                         generator_loss(netsD, image_encoder, fake_imgs, real_labels[subset_idx],
                                        words_embs, sent_emb, match_labels[subset_idx], cap_lens, class_ids,
                                        local_labels=label_one_hot, transf_matrices=transf_matrices,
                                        transf_matrices_inv=transf_matrices_inv, max_objects=max_objects)
                 else:
-                    errG = \
+                    errG, gen_losses = \
                         generator_loss(netsD, image_encoder, fake_imgs, real_labels,
                                        words_embs, sent_emb, match_labels, cap_lens, class_ids,
                                        local_labels=label_one_hot, transf_matrices=transf_matrices,
@@ -448,8 +491,14 @@ class condGANTrainer(object):
                 # backward and update parameters
                 errG_total.backward()
                 optimizerG.step()
-                epoch_stats['gen_losses']['kl_loss'] += kl_loss.item()
-                epoch_stats['gen_losses']['gen_loss'] += errG.item()
+                epoch_stats['gen_losses']['kl_loss'] += kl_loss.detach().item()
+                epoch_stats['gen_losses']['gen_loss'] += errG.detach().item()
+                for key in gen_losses.keys():
+                    if key in ['cond_errG', 'errG']:
+                        epoch_stats['gen_losses'][key] = [epoch_stats['gen_losses'][key][i] + gen_losses[key][i]
+                                                          for i in range(len(gen_losses[key]))]
+                    else:
+                        epoch_stats['gen_losses'][key] += gen_losses[key]
 
                 for p, avg_p in zip(netG.parameters(), avg_param_G):
                     avg_p.mul_(0.999).add_(p.data, alpha=0.001)
@@ -481,10 +530,15 @@ class condGANTrainer(object):
                                           max_objects, None, name='average')
                     load_params(netG, backup_para)
 
-            stats['gen_losses']['gen_loss'].append(epoch_stats['gen_losses']['gen_loss'] / gen_iterations)
-            stats['gen_losses']['kl_loss'].append(epoch_stats['gen_losses']['kl_loss'] / gen_iterations)
-            for i in range(len(netsD)):
-                stats['disc_losses'][i].append(epoch_stats['disc_losses'][i] / gen_iterations)
+            for key in epoch_stats['gen_losses'].keys():
+                if key in ['cond_errG', 'errG']:
+                    for i in range(len(netsD)):
+                        stats['gen_losses'][key][i].append(epoch_stats['gen_losses'][key][i] / gen_iterations)
+                else:
+                    stats['gen_losses'][key].append(epoch_stats['gen_losses'][key] / gen_iterations)
+            for key in epoch_stats['disc_losses'].keys():
+                for i in range(len(netsD)):
+                    stats['disc_losses'][key][i].append(epoch_stats['disc_losses'][key][i] / gen_iterations)
 
             with open(os.path.join(self.output_dir, 'stats.json'), 'w') as f:
                 json.dump(stats, f)

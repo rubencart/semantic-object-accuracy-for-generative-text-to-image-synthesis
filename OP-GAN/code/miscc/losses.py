@@ -129,7 +129,7 @@ def words_loss(img_features, words_emb, labels,
 
 
 # ##################Loss for G and Ds##############################
-def discriminator_loss(netD, real_imgs, fake_imgs, conditions,
+def discriminator_loss(netD, real_imgs, fake_imgs, disc_nb, conditions,
                        real_labels, fake_labels, local_labels=None,
                        transf_matrices=None, transf_matrices_inv=None, cfg=None, max_objects=None):
     # Forward
@@ -163,19 +163,29 @@ def discriminator_loss(netD, real_imgs, fake_imgs, conditions,
                                        conditions[1:batch_size])
     cond_wrong_errD = criterion(cond_wrong_logits, fake_labels[1:batch_size])
 
+    losses = {
+        'cond_real_errD': cond_real_errD.detach().item(),
+        'cond_fake_errD': cond_fake_errD.detach().item(),
+        'cond_wrong_errD': cond_wrong_errD.detach().item(),
+    }
+
     if cfg.TRAIN.BBOX_LOSS:
         cond_wrong_bbox = netD.COND_DNET(real_features_wrong_bbox,
                                          conditions)
         cond_wrong_bbox_errD = criterion(cond_wrong_bbox, fake_labels)
+        losses['cond_wrong_bbox_errD'] = cond_wrong_bbox_errD.detach().item()
 
     if netD.UNCOND_DNET is not None:
         real_logits = netD.UNCOND_DNET(real_features)
         fake_logits = netD.UNCOND_DNET(fake_features)
         real_errD = criterion(real_logits, real_labels)
         fake_errD = criterion(fake_logits, fake_labels)
+        losses['real_errD'] = real_errD.detach().item()
+        losses['fake_errD'] = fake_errD.detach().item()
         if cfg.TRAIN.BBOX_LOSS:
             wrong_bbox_logits = netD.UNCOND_DNET(real_features_wrong_bbox)
             wrong_bbox_errD = criterion(wrong_bbox_logits, fake_labels)
+            losses['wrong_bbox_errD'] = wrong_bbox_errD.detach().item()
             errD = ((real_errD + cond_real_errD) / 2. +
                     (fake_errD + cond_fake_errD + cond_wrong_errD + cond_wrong_bbox_errD + wrong_bbox_errD) / 5.)
 
@@ -187,7 +197,7 @@ def discriminator_loss(netD, real_imgs, fake_imgs, conditions,
             errD = cond_real_errD + (cond_fake_errD + cond_wrong_errD + cond_wrong_bbox_errD) / 3.
         else:
             errD = cond_real_errD + (cond_fake_errD + cond_wrong_errD) / 2.
-    return errD
+    return errD, losses
 
 
 def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
@@ -199,15 +209,22 @@ def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
     criterion = nn.BCELoss()
     # Forward
     errG_total = 0
+    gen_losses = {
+        'cond_errG': [],
+        'errG': [],
+    }
     for i in range(numDs):
         inputs = (fake_imgs[i], local_labels, transf_matrices, transf_matrices_inv, max_objects)
         features = netsD[i](*inputs)
         cond_logits = netsD[i].COND_DNET(features, sent_emb)
         cond_errG = criterion(cond_logits, real_labels)
+
+        gen_losses['cond_errG'].append(cond_errG.detach().item())
         if netsD[i].UNCOND_DNET is not None:
             logits = netsD[i].UNCOND_DNET(features)
             errG = criterion(logits, real_labels)
             g_loss = errG + cond_errG
+            gen_losses['errG'].append(errG.detach().item())
         else:
             g_loss = cond_errG
         errG_total += g_loss
@@ -230,8 +247,16 @@ def generator_loss(netsD, image_encoder, fake_imgs, real_labels,
                 cfg.TRAIN.SMOOTH.LAMBDA
             # err_sent = err_sent + s_loss.data[0]
 
+            gen_losses.update({
+                'w_loss0': w_loss0.detach().item(),
+                'w_loss1': w_loss1.detach().item(),
+                'w_loss': w_loss.detach().item(),
+                's_loss0': s_loss0.detach().item(),
+                's_loss1': s_loss1.detach().item(),
+                's_loss': s_loss.detach().item(),
+            })
             errG_total += w_loss + s_loss
-    return errG_total
+    return errG_total, gen_losses
 
 
 ##################################################################
